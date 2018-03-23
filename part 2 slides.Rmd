@@ -1,0 +1,345 @@
+---
+title: "MA 415/615  Project 2 Part 2: Chemical Treatment"
+author: "Ziran Min, Xi Chen, Shih-Ching,Huang"
+date: "Mar 19, 2018"
+output: ioslides_presentation
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+```{r, message=FALSE, warning=FALSE, include=FALSE}
+library(tidyverse)
+library(readxl)
+library(stringr)
+library(ggplot2)
+library(RColorBrewer)
+options(warn=-1)
+```
+
+## Introduction
+In this project, we use the data collected from USDA QuickStats system, and clean, visualize, and explore the insight about chemical treatments applied to food crops as fertilizer, insecticides, etc. We mainly focus on the chemicals classified as RESTRICTED USE CHEMICALS and use the information of LD50 for rats of each chemical to show its toxicity. This project ends with a tidy table of toxicity measurements and data visualization analysis. 
+
+
+## Data Engineering - Step One 
+We clean the original dataset veg1.xlsx, make it to a tidy table for RESTRICTED USE CHEMICALS.
+We narrow down the dataset size from  
+
+```{r, message=FALSE, warning=FALSE, include=FALSE, Warnings=FALSE}
+veg.1 <- read_xlsx("/Users/MZR/Desktop/MA415 Project 2/veg1.xlsx")
+
+# First use code from Class 19
+
+cnames.1 <- colnames(veg.1)
+
+c <- apply(veg.1, 2, n_distinct)
+
+d <- names(c[c==1])
+
+e <- names(c[c>1])
+
+# delete all useless columns (which only have one distinct value)
+
+veg.2 <- select(veg.1, e)
+
+cnames.2 <- colnames(veg.2)
+
+veg.3 <- dplyr::rename(veg.2, 
+                       Geo = `Geo Level`, 
+                       State = `State ANSI`,
+                       Data = `Data Item`,
+                       Category = `Domain Category`)
+
+cnames.3 <- colnames(veg.3)
+
+a1 <- separate(veg.3, Category, into = c("Label", "Quant"), sep=",")
+
+a2 <- filter(a1, Label=="RESTRICTED USE CHEMICAL")
+a21 <- a2 %>% select(Label, Quant) %>% unique()
+a3 <- separate(a2, Quant, into=c("Treatment Product","Chemical and Code"), sep = ":")
+a4 <- select(a3, -Domain)
+a5 <- separate(a4 ,Data, into = c("Commodity Name", "Measureed Value"), sep = "-")
+a6 <- separate(a5, "Measureed Value", into = c("Application or Treated", "Way of Measurement", "AVG or not"), sep = ",")
+a7 <- select(a6, -Geo, -State, -Region, -Commodity)
+a8 <- a7 %>% separate(`Chemical and Code` , into = c("Chemical Name", "Code"), sep = "=") %>% 
+  separate(`Chemical Name`, into = c("Useless1", "Chemical Name"), sep = "[()]") %>%
+  separate(Code, into = c("Chemical Code", "Useless2"), sep = "[())]") %>%
+  select(-Useless1, -Useless2)
+a9 <- filter(a8, `Way of Measurement`==" MEASURED IN LB")
+a10 <- filter(a9, !Value %in% c("(D)", "(Z)", "(NA)", NA))
+a11 <- select(a10, -`AVG or not`)
+a11$Value <- as.numeric(a11$Value)
+a11$Year <- as.character(a11$Year)
+a11$`Chemical Name` <- as.character(a11$`Chemical Name`)
+a12 <- a11 %>% separate(`Chemical Name` , into = c("Chemical Name", "nothing"), sep = " ") %>%
+  select(-nothing)
+
+a12[46,7] <- "EMAMECTIN BENZOATE"
+
+```
+
+```{r, echo=TRUE, message=FALSE, warning=FALSE}
+dim(veg.1)
+```
+to
+```{r, echo=TRUE, message=FALSE, warning=FALSE}
+dim(a12)
+```
+
+
+## Data Engineering - Step Two
+According to the data table we built in step one, we build a second table to show the LD50 for rats of each restricted use chemical in it. 
+
+```{r, message=FALSE, warning=FALSE, include=FALSE}
+
+BIFENTHRIN <- read.csv("/Users/MZR/Desktop/MA415 Project 2/LD50 Data/BIFENTHRIN.csv")
+as.tibble(BIFENTHRIN)
+ESFENVALERATE <- read.csv("/Users/MZR/Desktop/MA415 Project 2/LD50 Data/ESFENVALERATE.csv")
+as.tibble(ESFENVALERATE)
+IMIDACLOPRID <- read.csv("/Users/MZR/Desktop/MA415 Project 2/LD50 Data/IMIDACLOPRID.csv")
+as.tibble(IMIDACLOPRID)
+LAMBDA_CYHALOTHRIN <- read.csv("/Users/MZR/Desktop/MA415 Project 2/LD50 Data/LAMBDA-CYHALOTHRIN.csv")
+as.tibble(LAMBDA_CYHALOTHRIN)
+METHOMYL <- read.csv("/Users/MZR/Desktop/MA415 Project 2/LD50 Data/METHOMYL.csv")
+as.tibble(METHOMYL)
+NALED <- read.csv("/Users/MZR/Desktop/MA415 Project 2/LD50 Data/NALED.csv")
+as.tibble(NALED)
+PERMETHRIN <- read.csv("/Users/MZR/Desktop/MA415 Project 2/LD50 Data/PERMETHRIN.csv")
+as.tibble(PERMETHRIN)
+CHLORANTRANILIPROLE <- read.csv("/Users/MZR/Desktop/MA415 Project 2/LD50 Data/CHLORANTRANILIPROLE.csv")
+as.tibble(CHLORANTRANILIPROLE)
+CHLORPYRIFOS <- read.csv("/Users/MZR/Desktop/MA415 Project 2/LD50 Data/CHLORPYRIFOS.csv")
+as.tibble(CHLORPYRIFOS)
+DIAZINON <- read.csv("/Users/MZR/Desktop/MA415 Project 2/LD50 Data/DIAZINON.csv")
+as.tibble(DIAZINON)
+PRONAMIDE <- read.csv("/Users/MZR/Desktop/MA415 Project 2/LD50 Data/PRONAMIDE.csv")
+as.tibble(PRONAMIDE)
+DISULFOTON <- read.csv("/Users/MZR/Desktop/MA415 Project 2/LD50 Data/DISULFOTON.csv")
+as.tibble(DISULFOTON)
+EMAMECTIN_BENZOATE <- read.csv("/Users/MZR/Desktop/MA415 Project 2/LD50 Data/EMAMECTIN BENZOATE.csv")
+as.tibble(EMAMECTIN_BENZOATE)
+
+# The experiment animal we choose is rat
+
+BIFENTHRIN <- BIFENTHRIN %>% mutate( `Chemical Name` = "BIFENTHRIN") %>% filter(SPECIES == "rat")
+ESFENVALERATE <- ESFENVALERATE %>% mutate( `Chemical Name` = "ESFENVALERATE") %>% filter(SPECIES == "rat")
+IMIDACLOPRID <- IMIDACLOPRID %>% mutate( `Chemical Name` = "IMIDACLOPRID") %>% filter(SPECIES == "rat")
+LAMBDA_CYHALOTHRIN <- LAMBDA_CYHALOTHRIN %>% mutate( `Chemical Name` = "LAMBDA-CYHALOTHRIN") %>% filter(SPECIES == "rat")
+METHOMYL <- METHOMYL %>% mutate( `Chemical Name` = "METHOMYL") %>% filter(SPECIES == "rat")
+NALED <- NALED %>% mutate( `Chemical Name` = "NALED") %>% filter(SPECIES == "rat")
+PERMETHRIN <- PERMETHRIN %>% mutate( `Chemical Name` = "PERMETHRIN") %>% filter(SPECIES == "rat")
+CHLORANTRANILIPROLE <- CHLORANTRANILIPROLE %>% mutate( `Chemical Name` = "CHLORANTRANILIPROLE") %>% filter(SPECIES == "rat")
+CHLORPYRIFOS <- CHLORPYRIFOS %>% mutate( `Chemical Name` = "CHLORPYRIFOS") %>% filter(SPECIES == "rat")
+DIAZINON <- DIAZINON %>% mutate( `Chemical Name` = "DIAZINON") %>% filter(SPECIES == "rat")
+PRONAMIDE <- PRONAMIDE %>% mutate( `Chemical Name` = "PRONAMIDE") %>% filter(SPECIES == "rat")
+DISULFOTON <- DISULFOTON %>% mutate( `Chemical Name` = "DISULFOTON") %>% filter(SPECIES == "rat")
+EMAMECTIN_BENZOATE <- EMAMECTIN_BENZOATE %>% mutate( `Chemical Name` = "EMAMECTIN BENZOATE") %>% filter(SPECIES == "rat")
+
+
+# Combine them into one table, and the next step is to clean it
+
+LD50_1 <- rbind(BIFENTHRIN, ESFENVALERATE, IMIDACLOPRID, LAMBDA_CYHALOTHRIN,
+              METHOMYL, NALED, PERMETHRIN, CHLORANTRANILIPROLE, CHLORPYRIFOS, 
+              DIAZINON, PRONAMIDE, DISULFOTON, EMAMECTIN_BENZOATE)
+
+
+unique(LD50_1[,"Chemical Name"])
+
+LD50_2 <- filter(LD50_1, UNITS  == "mg/kg")
+
+unique(LD50_2[,"SOURCE"])
+
+LD50_3 <- filter(LD50_2, SOURCE  == "AcuteTox")
+
+unique(LD50_3[,"Chemical Name"])
+
+unique(LD50_3[,"TYPE"])
+
+unique(LD50_3[,"STUDY_TYPE"])
+
+
+# Now we have make sure each sample is oral LD50 measured on rats in mg/kg from source AcuteTox
+# But we don't have this data for EMAMECTIN BENZOATE after filtering, 
+# so besides BETA-CYFLUTHRIN and ZETA-CYPERMETHRIN, we also need to find 
+# the data of EMAMECTIN_BENZOATE from other sources. 
+# Before that, let's keep cleaning the data
+
+LD50_4 <- LD50_3 %>% group_by(`Chemical Name`) %>%
+  dplyr::summarize(round(mean(VALUES)))
+
+#LD50_4 <- LD50_3 %>% group_by(`Chemical Name`) %>%
+#  dplyr::summarize(mean(VALUES))
+
+
+LD50_4 <- plyr::rename(LD50_4, c(`round(mean(VALUES))` = "LD50 for Rats (mg/kg)" ))
+#LD50_4 <- plyr::rename(LD50_4, c(`mean(VALUES)` = "LD50 for Rats (mg/kg)" ))
+
+# From http://pmep.cce.cornell.edu, we get the LD5O on rats for BETA-CYFLUTHRIN and ZETA-CYPERMETHRIN,
+# are 869 - 1271 mg/kg(take average as 1070 mg/kg) and 250 mg/kg respectively. 
+# From http://www.rayfull.com/UploadFiles/PDF/201368165633.pdf, we know that the LD50 on rats for 
+# EMAMECTIN BENZOATE is 1516 mg/kg. 
+# Add these into LD50_4
+
+
+aa <- c("BETA-CYFLUTHRIN", 1070)
+bb <- c("ZETA-CYPERMETHRIN", 250)
+cc <- c("EMAMECTIN BENZOATE", 1516)
+
+LD50_4[nrow(LD50_4) + 1,] <- aa
+LD50_4[nrow(LD50_4) + 1,] <- bb
+LD50_4[nrow(LD50_4) + 1,] <- cc
+
+LD50_4$`LD50 for Rats (mg/kg)` <- as.numeric(LD50_4$`LD50 for Rats (mg/kg)`)
+
+```
+
+```{r, echo=TRUE, message=FALSE, warning=FALSE}
+head(LD50_4)
+```
+
+
+## Step Two - Visualization 
+According to the LD50 for rats, DISULFOTON has the highes toxicity, and PRONAMIDE has the lowest. (Higher the LD50, lower the toxcity)
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+ggplot(LD50_4,aes(`Chemical Name`,`LD50 for Rats (mg/kg)`))+
+  geom_bar(stat="identity",fill="#009E73")+
+  theme(axis.text.x=element_text(angle=90,hjust=1,vjust=0.5)) +
+  labs(title = "The LD50 on Rats for each Chemical") 
+```
+
+## Data Engineering - Step Three
+We combine the two tables build in step one and two, and created a column to show how many rats can be killed by the amount of each chemical applied to vegetables
+```{r, message=FALSE, warning=FALSE, include=FALSE}
+merge1 <- left_join(a12, LD50_4, by = "Chemical Name")
+merge2 <- merge1[,c(1,2,6:10)]
+merge2 <- plyr::rename(merge2, c(`Chemical Name` = "Restricted Use Chemical Name" ))
+merge2 <- plyr::rename(merge2, c(Value = "Value of the Chemical Applied to the Commodity in (LB)" ))
+merge2 <- plyr::rename(merge2, c(`LD50 for Rats (mg/kg)` = "Chemical's LD50 for Rats (mg/kg)" ))
+improve1 <- merge2 %>% mutate("Value of the Chemical Applied to the Commodity in (mg)" = `Value of the Chemical Applied to the Commodity in (LB)` * 453592)
+improve1 <- improve1[,c(1:6,8,7)]
+options(scipen=999)
+improve2 <- improve1 %>% 
+  mutate(round("Number of 300g Rats Can Be Killed" = `Value of the Chemical Applied to the Commodity in (mg)` /(2 * 0.3 * `Chemical's LD50 for Rats (mg/kg)`)))
+improve2 <- plyr::rename(improve2, c( "round(`Number of 300g Rats Can Be Killed` = `Value of the Chemical Applied to the Commodity in (mg)`/(2 * \n    0.3 * `Chemical's LD50 for Rats (mg/kg)`))" = "Number of 300g Rats Can Be Killed"))
+Final_Table <- improve2
+```
+
+
+```{r, echo=TRUE, message=FALSE, warning=FALSE}
+colnames(Final_Table)
+```
+
+## Chemicals Applied on BROCCOLI
+Through years, the variety of chemical increases but the amount of each decreases
+```{r}
+part1 <- filter(Final_Table, `Commodity Name`  == "BROCCOLI ")
+ggplot(part1, aes( x = `Restricted Use Chemical Name`, y = `Value of the Chemical Applied to the Commodity in (LB)`, fill = Year))+
+         geom_bar(position = "dodge",stat="identity") + 
+          theme(axis.text.x=element_text(angle=90,hjust=1,vjust=0.5)) +
+          scale_fill_brewer(palette = "Greens") +
+        labs(title = "Restricted Use Chemical applied on Broccoli by Year")
+```
+
+
+## Chemicals Applied on CAULIFLOWER
+Through years, the variety of chemical increases but the amount of each decreases
+```{r}
+part2 <- filter(Final_Table, `Commodity Name`  == "CAULIFLOWER ")
+ggplot(part2, aes( x = `Restricted Use Chemical Name`, y = `Value of the Chemical Applied to the Commodity in (LB)`, fill = Year))+
+  geom_bar(position = "dodge",stat="identity") + 
+  theme(axis.text.x=element_text(angle=90,hjust=1,vjust=0.5)) +
+  scale_fill_brewer(palette = "Greens") +
+  labs(title = "Restricted Use Chemical applied on Cauliflower by Year")
+```
+
+
+## Number of Rats can be Killed, BROCCOLI, 2006
+```{r}
+part6 <- filter(Final_Table, `Commodity Name`  == "BROCCOLI ", Year == 2006)
+ggplot(part6, aes( x = `Restricted Use Chemical Name`, y = `Number of 300g Rats Can Be Killed`))+
+  geom_bar(stat="identity", fill = "skyblue") + 
+  theme(axis.text.x=element_text(angle=90,hjust=1,vjust=0.5)) +
+  labs(title = "Number of 300g Rats Can Be Killed by Chemicals applied on Broccoli in 2006")
+```
+
+## Number of Rats can be Killed, BROCCOLI, 2010
+
+```{r}
+part5 <- filter(Final_Table, `Commodity Name`  == "BROCCOLI ", Year == 2010)
+ggplot(part5, aes( x = `Restricted Use Chemical Name`, y = `Number of 300g Rats Can Be Killed`))+
+  geom_bar(stat="identity", fill = "skyblue") + 
+  theme(axis.text.x=element_text(angle=90,hjust=1,vjust=0.5)) +
+  labs(title = "Number of 300g Rats Can Be Killed by Chemicals applied on Broccoli in 2010")
+```
+
+
+## Number of Rats can be Killed, BROCCOLI, 2014
+
+```{r}
+part4 <- filter(Final_Table, `Commodity Name`  == "BROCCOLI ", Year == 2014)
+ggplot(part4, aes( x = `Restricted Use Chemical Name`, y = `Number of 300g Rats Can Be Killed`))+
+  geom_bar(stat="identity", fill = "skyblue") + 
+  theme(axis.text.x=element_text(angle=90,hjust=1,vjust=0.5)) +
+  labs(title = "Number of 300g Rats Can Be Killed by Chemicals applied on Broccoli in 2014")
+```
+
+## Number of Rats can be Killed, BROCCOLI, 2016
+```{r}
+part3 <- filter(Final_Table, `Commodity Name`  == "BROCCOLI ", Year == 2016)
+ggplot(part3, aes( x = `Restricted Use Chemical Name`, y = `Number of 300g Rats Can Be Killed`))+
+  geom_bar(stat="identity", fill = "skyblue") + 
+  theme(axis.text.x=element_text(angle=90,hjust=1,vjust=0.5)) +
+  labs(title = "Number of 300g Rats Can Be Killed by Chemicals applied on Broccoli in 2016")
+```
+
+## Number of Rats can be Killed, CAULIFLOWER, 2006
+```{r}
+part10 <- filter(Final_Table, `Commodity Name`  == "CAULIFLOWER ", Year == 2006)
+ggplot(part10, aes( x = `Restricted Use Chemical Name`, y = `Number of 300g Rats Can Be Killed`))+
+  geom_bar(stat="identity", fill = "skyblue") + 
+  theme(axis.text.x=element_text(angle=90,hjust=1,vjust=0.5)) +
+  labs(title = "Number of 300g Rats Can Be Killed by Chemicals applied on Cauliflower in 2006")
+```
+
+## Number of Rats can be Killed, CAULIFLOWER, 2010
+```{r}
+part9 <- filter(Final_Table, `Commodity Name`  == "CAULIFLOWER ", Year == 2010)
+ggplot(part9, aes( x = `Restricted Use Chemical Name`, y = `Number of 300g Rats Can Be Killed`))+
+  geom_bar(stat="identity", fill = "skyblue") + 
+  theme(axis.text.x=element_text(angle=90,hjust=1,vjust=0.5)) +
+  labs(title = "Number of 300g Rats Can Be Killed by Chemicals applied on Cauliflower in 2010")
+```
+
+
+## Number of Rats can be Killed, CAULIFLOWER, 2014
+```{r}
+part8 <- filter(Final_Table, `Commodity Name`  == "CAULIFLOWER ", Year == 2014)
+ggplot(part8, aes( x = `Restricted Use Chemical Name`, y = `Number of 300g Rats Can Be Killed`))+
+  geom_bar(stat="identity", fill = "skyblue") + 
+  theme(axis.text.x=element_text(angle=90,hjust=1,vjust=0.5)) +
+  labs(title = "Number of 300g Rats Can Be Killed by Chemicals applied on Cauliflower in 2014")
+```
+
+## Number of Rats can be Killed, CAULIFLOWER, 2016
+```{r}
+part7 <- filter(Final_Table, `Commodity Name`  == "CAULIFLOWER ", Year == 2016)
+ggplot(part7, aes( x = `Restricted Use Chemical Name`, y = `Number of 300g Rats Can Be Killed`))+
+  geom_bar(stat="identity", fill = "skyblue") + 
+  theme(axis.text.x=element_text(angle=90,hjust=1,vjust=0.5)) +
+  labs(title = "Number of 300g Rats Can Be Killed by Chemicals applied on Cauliflower in 2016")
+```
+
+
+## Conclusion
+Through years, the variety of chemical applied on BROCCOLI and CAULIFLOWER increases, but the amount of each decreases. Thus the amount of rats can be killed of each chemical applied on vegetables decreases in general from 2006 to 2017.
+
+
+
+
+
+
+
+
+

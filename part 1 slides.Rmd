@@ -1,0 +1,232 @@
+---
+title: "MA 415/615  Project 2 Part 1: Buoy 46035"
+author: "Ziran Min, Xi Chen, Shih-Ching,Huang"
+date: "Mar 19, 2018"
+output: ioslides_presentation
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+
+## Introduction
+In this project, we will 
+
+1. read, clean, and organize the data from the website for NOAA Weather Station buoy 46035 at 57.026 N 177.738 W in the NOAA National Data Buoy Center 
+
+2. produce a time series composed of 30 years of daily Air Temperature and Sea Temperature readings recorded at noon
+
+3. visualize and explore the correlation between air temperature and sea temperature 
+
+4. test whether the mean temperature changed over the past 30 years
+
+
+
+## Data Engineering 
+
+Step One: Import 30 annual datasets (1988-2017) recorded by buoy 46035 from website NOAA and combine them into one big set \newline
+
+ (a) The whole dataset of 2013 is missing, skip it\newline
+ (b) Before 2005 the data don't have minute(mm) column, we add them back\newline
+ (c) Since 2007, the data has a redundant first row about unit, we delet them \newline
+ (d) Put '19' in front of 2 digit years\newline
+ (e) Filter the data by year, month, day, hout, minute, and air & sea temperature\newline
+ 
+## Data Engineering 
+Step Two: Keep Cleaning the combined whole data set\newline
+
+  (a) Filter by the time at noon, 11:50 or 12:00\newline
+  (b) Change sea temp and air temp to numeric form\newline
+  (c) Convert all missing data (which is 999 or 99) into NA form\newline
+  (d) Combine year, month, and day to one Data column\newline
+
+
+```{r, message=FALSE, warning=FALSE, include=FALSE}
+library(tidyverse)
+library(stringr)
+options(warn = -1)
+```
+
+```{r, message=FALSE, warning=FALSE, include=FALSE}
+url1 <- "http://www.ndbc.noaa.gov/view_text_file.php?filename=46035h"
+url2 <- ".txt.gz&dir=data/historical/stdmet/"
+years <- c(1988:2017)
+years <- years[-26]
+urls <- str_c(url1, years, url2, sep = "")
+filenames <- str_c("mr", years, sep = "")
+N <- length(urls)
+for (i in 1:N){
+  suppressMessages(assign(filenames[i], read_table(urls[i], col_names = TRUE)))
+  file <- get(filenames[i])
+  colnames(file)[1] <-"YYYY"
+  if (i <= 17) {file <- file %>% mutate(mm = "00")}
+  if (i >= 20) {file <- file[-1,]}
+  file <- file %>% select(YYYY, MM, DD, hh, mm, ATMP, WTMP)
+  if (i <= 11) {file[1] <- i + 1987}
+  if(i == 1){Whole_Set <- file}
+  else{Whole_Set <- rbind.data.frame(Whole_Set, file)}
+}
+```
+
+```{r, message=FALSE, warning=FALSE, include=FALSE}
+Noon_Data <- Whole_Set %>% filter((hh == "11" & mm == "50") | (hh == "12" & mm == "00"))
+# Change sea temp and air temp to numeric form
+Noon_Data$ATMP <- as.numeric(Noon_Data$ATMP)
+Noon_Data$WTMP <- as.numeric(Noon_Data$WTMP)
+
+# Convert all missing data (which is 999 or 99) into NA form
+Noon_Data$ATMP <- ifelse(Noon_Data$ATMP > 90, NA, Noon_Data$ATMP)
+Noon_Data$WTMP <- ifelse(Noon_Data$WTMP > 90, NA, Noon_Data$WTMP)
+
+# Combine year, month, and day to one Data column
+Noon_Data <- unite(Noon_Data, Date, YYYY, MM, DD, sep = "-")
+Noon_Data$Date <-as.Date(Noon_Data$Date)
+
+```
+
+## Build Time Series of Air Teperature 
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+ggplot(Noon_Data, aes(Date, ATMP)) + geom_line() +
+  geom_line(col = "red") +
+  labs(x = "Date (Shown Year Here)", y = "Temperature (Celcius Degree)",
+        title = "Time Series of Air Temperature (Daily Noon Data)")
+```
+  
+## Build Time Series of Sea Temperature
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+ggplot(Noon_Data, aes(Date, WTMP)) + geom_line() +
+  geom_line(col = "blue") +
+  labs(x = "Date (Shown Year Here)", y = "Temperature (Celcius Degree)",
+        title = "Time Series of Sea Temperature (Daily Noon Data)")
+
+# Now we notice that not only the data in whole year of 2013 is missing, the data in 2012 is missing
+# as well. To deal with this "big gap" in the time series chart. One solution we came up with, is to
+# find the data in 2012 and 2013 of another buoy which is the closest to buoy 46035. 
+# For example buoy 46070 is close to buoy 46035, we can add the data of buoy 46070 in 2012 and 2013
+# into our whole data set by slightly changing the code, like adding an another url variables and 
+# assigning the file of 2012 and 2013 into the new link. 
+
+```
+
+## Time Series of Air and Sea Temperature
+By looking the combined time series chart, we think air temp and sea temp are correlated.
+We will test this later
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+ggplot(Noon_Data, aes(Date)) + 
+  geom_line(aes(y = ATMP, col = "ATMP")) + 
+  geom_line(aes(y = WTMP, col = "WTMP")) +
+  scale_colour_manual(values=c("red", "blue")) +
+  labs(x = "Date (Shown Year Here)", y = "Temperature (Celcius Degree)",
+       title = "Time Series of Air & Sea Temperature (Daily Noon Data)")
+```
+
+##  Scatter Plot to See the Correlation between ATMP and WTMP
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+ggplot(Noon_Data) + 
+  geom_point(mapping = aes(x = ATMP, y = WTMP)) +
+  labs(x = "Daily Noon Air Temp (Celcius)", 
+       y = "Daily Noon Sea Temp (Celcius)",
+       title = "Scatter Plot to See the Correlation between ATMP and WTMP")
+```
+
+##  Smooth Line to See the Correlation between ATMP and WTMP
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+ggplot(Noon_Data) + 
+  geom_smooth(mapping = aes(x = ATMP, y = WTMP)) +
+  labs(x = "Daily Noon Air Temp (Celcius)", 
+       y = "Daily Noon Sea Temp (Celcius)",
+      title = "Smooth Line to See the Correlation between ATMP and WTMP")
+```
+
+## Test the Correlation
+By conducting Pearson Correlation Test, we find ATMP and WTMP have significant coefficient of correlation of 0.8774953 with p-value < 2.2e-16. Therefore, we conclude that ATMP and WTMP do have strong positive correlation.
+```{r, echo=TRUE, message=FALSE, warning=FALSE}
+cor.test(Noon_Data$ATMP, Noon_Data$WTMP, method = "pearson")
+```
+## Test Whether Air Temperature Changed from 1988 to 2017 (Noon_Data)
+$H_{0}:\mu _{air,noon, 1988} - \mu _{air,noon, 2017} = 0$ \newline
+$H_{a}:\mu _{air,noon, 1988} - \mu _{air,noon, 2017} \neq  0$
+
+## Test Whether Air Temperature Changed from 1988 to 2017 (Noon_Data)
+To see whether the mean air temp changed over 30 years, we need to do t-test and create datasets which are only for 1988 and 2017
+```{r, echo=TRUE, message=FALSE, warning=FALSE}
+Noon_1988 <- Noon_Data %>% 
+     separate(Date, into = c("YYYY", "MM", "DD"), sep = "-")
+Noon_1988 <- filter(Noon_1988, YYYY == 1988)
+
+Noon_2017 <- Noon_Data %>%
+    separate(Date, into = c("YYYY", "MM", "DD"), sep = "-")
+Noon_2017 <- filter(Noon_2017, YYYY == 2017)
+```
+
+
+## Test Result
+Because the p-value = 5.153e-13 < 0.01, we reject the null hypothesis that the means of ATMP in 1988 and in 2017 are equal and conclude that air temp indeed changed over 30 years.
+```{r, echo=TRUE}
+t.test(Noon_1988$ATMP, Noon_2017$ATMP)
+```
+
+## Test Whether Sea Temperature Changed from 1988 to 2017 (Noon_Data)
+$H_{0}:\mu _{sea,noon, 1988} - \mu _{sea,noon, 2017} = 0$ \newline
+$H_{a}:\mu _{sea,noon, 1988} - \mu _{sea,noon, 2017} \neq  0$
+
+
+## Test Result
+Because the p-value = 9.035e-13 < 0.01, we reject the null hypothesis that the means of WTMP in 1988 and in 2017 are equal and conclude that sea temp indeed changed over 30 years.
+
+```{r, echo=TRUE, message=FALSE, warning=FALSE}
+t.test(Noon_1988$WTMP, Noon_2017$WTMP)
+```
+
+## We've been instructed to use only one sample per day day out of 24 daily hourly temperature readings. Has our sampling affected our evaluation of temperature change?
+
+
+## Test Whether Air Temperature Changed from 1988 to 2017 (Whole Data)
+$H_{0}:\mu _{air,whole, 1988} - \mu _{air,whole, 2017} = 0$ \newline
+$H_{a}:\mu _{air,whole, 1988} - \mu _{air,whole, 2017} \neq  0$
+
+
+## Test Whether Air Temperature Changed from 1988 to 2017 (Whole Data)
+Create whole year datasets for 1988 and 2017
+```{r, echo=TRUE, message=FALSE, warning=FALSE}
+mr2017 <- mr2017[-1,]
+mr1988$ATMP <- as.numeric(mr1988$ATMP)
+mr2017$ATMP <- as.numeric(mr2017$ATMP)
+
+mr1988$ATMP <- ifelse(mr1988$ATMP > 90, NA, mr1988$ATMP)
+mr2017$ATMP <- ifelse(mr2017$ATMP > 90, NA, mr2017$ATMP)
+```
+
+## Test Result 
+Because the p-value < 2.2e-16 < 0.01, we reject the null hypothesis that the means of ATMP in 1988 and in 2017 are equal and conclude that air temp indeed changed over 30 years. So our sampling doesn't affect our evaluation of air temperature change.
+```{r, echo=TRUE, message=FALSE, warning=FALSE}
+t.test(mr1988$ATMP, mr2017$ATMP)
+
+```
+
+## Test Whether Sea Temperature Changed from 1988 to 2017 (Whole Data)
+$H_{0}:\mu _{sea,whole, 1988} - \mu _{sea,whole, 2017} = 0$ \newline
+$H_{a}:\mu _{sea,whole, 1988} - \mu _{sea,whole, 2017} \neq  0$
+
+```{r, message=FALSE, warning=FALSE, include=FALSE}
+mr1988$WTMP <- as.numeric(mr1988$WTMP)
+mr2017$WTMP <- as.numeric(mr2017$WTMP)
+
+mr1988$WTMP <- ifelse(mr1988$WTMP > 90, NA, mr1988$WTMP)
+mr2017$WTMP <- ifelse(mr2017$WTMP > 90, NA, mr2017$WTMP)
+
+```
+
+
+## Test Result
+Because the p-value < 2.2e-16 < 0.01, we reject the null hypothesis that the means of WTMP in 1988 and in 2017 are equal and conclude that sea temp indeed changed over 30 years. So our sampling doesn't affect our evaluation of sea temperature change.
+```{r, echo=TRUE, message=FALSE, warning=FALSE}
+t.test(mr1988$WTMP, mr2017$WTMP)
+```
+
+## Conclusion
+1. Air Temp and Sea Temp have strong positive correlation over 30 years
+
+2. The reason why choosing daily noon data and whole hourly data gave us the same result of "changing mean"is that getting one noon data every day has already created a big dataset for a year (365 samples > 30 samples). Therefore, the results from daily noon data shows the situation under the normal distribution, which approches to the population data (Whole Set). Plus, each temperature recorded is correlacted with the last and next temperaature recorded, and it shows the concept of time series.
+
